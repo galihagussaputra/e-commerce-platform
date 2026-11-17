@@ -131,13 +131,22 @@ const removeProduct = async (id) => {
 const listCategories = async () =>
   Category.find({ isActive: true }).sort({ name: 1 });
 
+const buildCategoryPayload = ({ name, slug, description, image, isActive }) => ({
+  ...(name !== undefined ? { name } : {}),
+  ...(slug !== undefined ? { slug } : {}),
+  ...(description !== undefined ? { description } : {}),
+  ...(image !== undefined ? { image } : {}),
+  ...(isActive !== undefined ? { isActive } : {}),
+});
+
 const createCategory = async (payload) => {
-  if (!payload.slug) payload.slug = slugify(payload.name);
-  return Category.create(payload);
+  const data = buildCategoryPayload(payload);
+  if (!data.slug) data.slug = slugify(data.name);
+  return Category.create(data);
 };
 
 const updateCategory = async (id, payload) => {
-  const category = await Category.findByIdAndUpdate(id, payload, {
+  const category = await Category.findByIdAndUpdate(id, buildCategoryPayload(payload), {
     returnDocument: 'after',
     runValidators: true,
   });

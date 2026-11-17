@@ -6,6 +6,7 @@ const login = async (req, res) => success(res, await authService.login(req.body)
 const me = async (req, res) => success(res, req.user.safeObject());
 const updateProfile = async (req, res) => success(res, await authService.updateProfile(req.user, req.body));
 const changePassword = async (req, res) => success(res, await authService.changePassword(req.user, req.body));
+const logout = async (req, res) => success(res, await authService.logout(req.user._id));
 const addAddress = async (req, res) => success(res, await authService.addAddress(req.user, req.body), 201);
 const updateAddress = async (req, res) => success(res, await authService.updateAddress(req.user, req.params.id, req.body));
 const removeAddress = async (req, res) => success(res, await authService.removeAddress(req.user, req.params.id));
@@ -18,6 +19,7 @@ module.exports = {
   me,
   updateProfile,
   changePassword,
+  logout,
   addAddress,
   updateAddress,
   removeAddress,

@@ -3,9 +3,15 @@ const User = require('../models/User');
 const config = require('../config');
 const AppError = require('../utils/AppError');
 const { normalizeEmail } = require('../utils/money');
+const escapeRegex = require('../utils/escapeRegex');
 
 const signToken = (user) =>
-  jwt.sign({ id: user._id, email: user.email, role: user.role }, config.jwtSecret, {
+  jwt.sign({
+    id: user._id,
+    email: user.email,
+    role: user.role,
+    tokenVersion: user.tokenVersion || 0,
+  }, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn,
   });
 
@@ -49,8 +55,14 @@ const changePassword = async (user, { currentPassword, newPassword }) => {
   }
   fresh.password = newPassword;
   fresh.passwordChangedAt = new Date();
+  fresh.tokenVersion = (fresh.tokenVersion || 0) + 1;
   await fresh.save();
   return { changed: true };
+};
+
+const logout = async (userId) => {
+  await User.updateOne({ _id: userId }, { $inc: { tokenVersion: 1 } });
+  return { loggedOut: true };
 };
 
 const addAddress = async (user, address) => {
@@ -81,8 +93,9 @@ const removeAddress = async (user, addressId) => {
 };
 
 const listUsers = async ({ page = 1, limit = 20, search = '' }) => {
+  const pattern = new RegExp(escapeRegex(search), 'i');
   const filter = search
-    ? { $or: [{ name: new RegExp(search, 'i') }, { email: new RegExp(search, 'i') }] }
+    ? { $or: [{ name: pattern }, { email: pattern }] }
     : {};
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
@@ -106,6 +119,7 @@ module.exports = {
   login,
   updateProfile,
   changePassword,
+  logout,
   addAddress,
   updateAddress,
   removeAddress,

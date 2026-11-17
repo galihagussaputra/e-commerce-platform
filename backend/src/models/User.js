@@ -24,6 +24,7 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
     addresses: { type: [addressSchema], default: [] },
     passwordChangedAt: { type: Date },
+    tokenVersion: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

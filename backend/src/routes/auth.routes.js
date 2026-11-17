@@ -13,6 +13,7 @@ router.post('/login', authLimiter, validator.login, validate, asyncHandler(authC
 
 router.use(protect);
 router.get('/me', asyncHandler(authController.me));
+router.post('/logout', asyncHandler(authController.logout));
 router.put('/profile', validator.profile, validate, asyncHandler(authController.updateProfile));
 router.put('/password', validator.password, validate, asyncHandler(authController.changePassword));
 router.post('/addresses', validator.address, validate, asyncHandler(authController.addAddress));

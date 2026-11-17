@@ -2,7 +2,9 @@ const productService = require('../services/product.service');
 const { success } = require('../utils/apiResponse');
 
 const list = async (req, res) => {
-  const result = await productService.listProducts(req.query);
+  const query = { ...req.query };
+  if (query.status === 'all' && req.user?.role !== 'admin') query.status = 'active';
+  const result = await productService.listProducts(query);
   success(res, result.items, 200, { total: result.total, page: result.page, limit: result.limit });
 };
 

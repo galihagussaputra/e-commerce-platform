@@ -35,8 +35,11 @@ const list = [
 ];
 
 const category = [
-  body('name').trim().notEmpty().isLength({ max: 100 }),
+  body('name').optional({ checkFalsy: false }).trim().notEmpty().isLength({ max: 100 }),
   body('slug').optional().trim().matches(/^[a-z0-9-]+$/),
+  body('description').optional().trim().isLength({ max: 500 }),
+  body('image').optional({ checkFalsy: true }).trim().isLength({ max: 500 }),
+  body('isActive').optional().isBoolean(),
 ];
 
 const id = [param('id').isMongoId()];

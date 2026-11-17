@@ -18,6 +18,9 @@ const protect = async (req, _res, next) => {
     }
     const user = await User.findById(payload.id).select('-password');
     if (!user) throw new AppError(401, 'UNAUTHORIZED', 'User no longer exists');
+    if ((payload.tokenVersion ?? 0) !== (user.tokenVersion || 0)) {
+      throw new AppError(401, 'SESSION_INVALID', 'This session has been ended');
+    }
     req.user = user;
     next();
   } catch (error) {

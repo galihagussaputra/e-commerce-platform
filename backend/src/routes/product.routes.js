@@ -18,7 +18,7 @@ router.post('/', validator.create, validate, asyncHandler(productController.crea
 router.put('/:id', validator.update, validate, asyncHandler(productController.update));
 router.delete('/:id', validator.id, validate, asyncHandler(productController.remove));
 router.post('/categories', validator.category, validate, asyncHandler(productController.createCategory));
-router.put('/categories/:id', validator.category, asyncHandler(productController.updateCategory));
+router.put('/categories/:id', validator.id, validator.category, validate, asyncHandler(productController.updateCategory));
 router.delete('/categories/:id', validator.id, validate, asyncHandler(productController.removeCategory));
 
 module.exports = router;

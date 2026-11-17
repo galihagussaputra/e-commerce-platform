@@ -96,6 +96,13 @@ const ensureUser = async (email, name, password, role) => {
 };
 
 const seed = async () => {
+  if (config.nodeEnv === 'production') {
+    const forbidden = new Set(['admin12345', 'change-me', 'change-me-at-first-login', 'Demo12345', 'password']);
+    if (!process.env.ADMIN_SEED_PASSWORD || config.adminSeedPassword.length < 12 || forbidden.has(config.adminSeedPassword)) {
+      throw new Error('ADMIN_SEED_PASSWORD must be explicitly set to a strong non-default value in production');
+    }
+  }
+
   await connectDatabase();
 
   for (const category of categories) {
@@ -123,6 +130,13 @@ const seed = async () => {
   }
 
   const adminCreated = await ensureUser(config.adminSeedEmail, 'Store Admin', config.adminSeedPassword, 'admin');
+  if (config.nodeEnv === 'production') {
+    console.log(`Seed complete: ${products.length} products, ${categories.length} categories`);
+    if (adminCreated) console.log(`Admin created: ${config.adminSeedEmail}`);
+    console.log('Demo customer skipped in production');
+    await disconnectDatabase();
+    return { categories: categories.length, products: products.length, adminCreated, demoCreated: false };
+  }
   const demoCreated = await ensureUser('customer@example.com', 'Demo Customer', 'Demo12345', 'user');
   const addresses = (await User.findOne({ email: 'customer@example.com' })).addresses;
   if (!addresses.length) {
