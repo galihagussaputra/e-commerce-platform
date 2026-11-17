@@ -7,13 +7,13 @@ process.env.CLIENT_URL = 'http://localhost:5173';
 
 const os = require('node:os');
 const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+const { MongoMemoryReplSet } = require('mongodb-memory-server');
 
 let memoryServer;
 
 beforeAll(async () => {
-  memoryServer = await MongoMemoryServer.create();
-  await mongoose.connect(memoryServer.getUri(), { runtimeAdapters: { os } });
+  memoryServer = await MongoMemoryReplSet.create({ replSet: { count: 1, name: 'testset' } });
+  await mongoose.connect(memoryServer.getUri('ecommerce_test'), { runtimeAdapters: { os } });
 });
 
 afterEach(async () => {
