@@ -46,6 +46,11 @@ const orderSchema = new mongoose.Schema(
     paymentIntentId: { type: String, default: '' },
     idempotencyKey: { type: String, default: null },
     reservationExpiresAt: { type: Date },
+    reservationState: {
+      type: String,
+      enum: ['held', 'released', 'finalized'],
+      default: 'held',
+    },
     timeline: {
       type: [{ status: String, at: { type: Date, default: Date.now }, note: String }],
       default: [],
@@ -57,6 +62,6 @@ const orderSchema = new mongoose.Schema(
 
 orderSchema.index({ user: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
-orderSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
+orderSchema.index({ user: 1, idempotencyKey: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Order', orderSchema);

@@ -20,7 +20,13 @@ const paymentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-paymentSchema.index({ checkoutSessionId: 1 }, { unique: true, sparse: true });
-paymentSchema.index({ paymentIntentId: 1 }, { unique: true, sparse: true });
+paymentSchema.index(
+  { checkoutSessionId: 1 },
+  { unique: true, partialFilterExpression: { checkoutSessionId: { $gt: '' } } }
+);
+paymentSchema.index(
+  { paymentIntentId: 1 },
+  { unique: true, partialFilterExpression: { paymentIntentId: { $gt: '' } } }
+);
 
 module.exports = mongoose.model('Payment', paymentSchema);

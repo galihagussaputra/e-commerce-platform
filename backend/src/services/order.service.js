@@ -1,9 +1,11 @@
 const Order = require('../models/Order');
 const Payment = require('../models/Payment');
 const AppError = require('../utils/AppError');
+const escapeRegex = require('../utils/escapeRegex');
 const { withTransaction } = require('../config/database');
 const { releaseItems, restockItems, finalizeSale } = require('./inventory.service');
 const { restoreCartFromOrder } = require('./cart.service');
+const { refundPaidOrder } = require('./refund.service');
 
 const transitions = {
   pending_payment: ['paid', 'cancelled'],
@@ -14,6 +16,11 @@ const transitions = {
   cancelled: [],
   refunded: [],
 };
+
+const findForUpdate = (query, session) => (session ? query.session(session) : query);
+
+const isReservationExpired = (order) =>
+  Boolean(order?.reservationExpiresAt && new Date(order.reservationExpiresAt) <= new Date());
 
 const listOrders = async ({
   user,
@@ -29,10 +36,13 @@ const listOrders = async ({
   const filter = role === 'admin' ? {} : { user: user._id };
   if (status && status !== 'all') filter.status = status;
   if (paymentStatus && paymentStatus !== 'all') filter.paymentStatus = paymentStatus;
-  if (q) filter.$or = [
-    { orderNumber: new RegExp(q, 'i') },
-    { 'shippingAddress.fullName': new RegExp(q, 'i') },
-  ];
+  if (q) {
+    const pattern = new RegExp(escapeRegex(q), 'i');
+    filter.$or = [
+      { orderNumber: pattern },
+      { 'shippingAddress.fullName': pattern },
+    ];
+  }
   if (from || to) {
     filter.createdAt = {};
     if (from) filter.createdAt.$gte = new Date(from);
@@ -60,41 +70,82 @@ const getOrder = async (id, user, role) => {
   return order;
 };
 
-const cancelOrderInternal = async (order, actorId, reason) => {
-  if (!['pending_payment', 'paid', 'processing'].includes(order.status)) {
-    return order;
-  }
-  const wasPending = order.status === 'pending_payment';
+const releaseOrderReservation = async (order, {
+  actorId,
+  reason = 'Reservation released',
+  eventId,
+  restoreCart = true,
+} = {}) => {
+  if (!order || order.status !== 'pending_payment') return false;
+
+  let released = false;
   await withTransaction(async (session) => {
-    if (wasPending) {
-      await releaseItems(order.items, {
-        order,
-        performedBy: actorId,
-        reason: reason || 'Order cancelled before payment',
-        session,
-      });
-    } else {
-      await restockItems(order.items, {
-        order,
-        performedBy: actorId,
-        reason: reason || 'Order cancelled after payment',
-        session,
-      });
-    }
-    order.status = 'cancelled';
-    if (!wasPending) order.paymentStatus = 'refunded';
-    order.timeline.push({ status: 'cancelled', at: new Date(), note: reason || 'Cancelled' });
-    await order.save({ session });
-    await Payment.findOneAndUpdate(
-      { order: order._id },
-      { $set: { status: wasPending ? 'failed' : 'refunded', failureReason: reason || 'Cancelled' } },
-      { session }
-    );
+    const locked = await findForUpdate(Order.findById(order._id), session);
+    if (!locked || locked.status !== 'pending_payment' || locked.reservationState !== 'held') return;
+
+    await releaseItems(locked.items, {
+      order: locked,
+      performedBy: actorId,
+      reason,
+      session,
+    });
+
+    locked.status = 'cancelled';
+    locked.paymentStatus = 'failed';
+    locked.reservationState = 'released';
+    locked.timeline.push({ status: 'cancelled', at: new Date(), note: reason });
+    await locked.save({ session });
+
+    const paymentUpdate = { $set: { status: 'failed', failureReason: reason } };
+    if (eventId) paymentUpdate.$set.processedEventId = eventId;
+    await findForUpdate(Payment.findOneAndUpdate({ order: locked._id }, paymentUpdate), session);
+    released = true;
   });
-  if (wasPending && order.user) {
+
+  if (released && restoreCart && order.user) {
     await restoreCartFromOrder(order.user._id || order.user, order);
   }
-  return order;
+  return released;
+};
+
+const expireOrderReservationIfStale = async (order) => {
+  if (!isReservationExpired(order)) return false;
+  return releaseOrderReservation(order, {
+    reason: 'Reservation expired before payment',
+  });
+};
+
+const cancelOrderInternal = async (order, actorId, reason, options = {}) => {
+  if (!['pending_payment', 'paid', 'processing'].includes(order?.status)) return order;
+
+  if (order.status === 'pending_payment') {
+    await releaseOrderReservation(order, {
+      actorId,
+      reason: reason || 'Order cancelled before payment',
+    });
+    return Order.findById(order._id);
+  }
+
+  await refundPaidOrder(order, {
+    eventId: options.eventId,
+    reason: reason || 'Order cancelled after payment',
+    restock: options.restock !== false,
+  });
+
+  await withTransaction(async (session) => {
+    const locked = await findForUpdate(Order.findById(order._id), session);
+    if (!locked || !['paid', 'processing'].includes(locked.status)) return;
+    locked.status = 'cancelled';
+    locked.paymentStatus = 'refunded';
+    locked.timeline.push({ status: 'cancelled', at: new Date(), note: reason || 'Cancelled' });
+    await locked.save({ session });
+    await findForUpdate(Payment.findOneAndUpdate(
+      { order: locked._id },
+      { $set: { status: 'refunded', failureReason: reason || 'Cancelled' } }
+    ), session);
+  });
+
+  return Order.findById(order._id);
 };
 
 const cancelOrder = async (id, user, role, reason) => {
@@ -119,38 +170,52 @@ const updateStatus = async (id, status, note, actorId) => {
 };
 
 const finalizePaidOrder = async (order, paymentIntentId, eventId) => {
-  if (order.status !== 'pending_payment') return false;
+  if (!order || order.status !== 'pending_payment') return false;
+
+  let finalized = false;
   await withTransaction(async (session) => {
-    await finalizeSale(order.items, { order, performedBy: order.user, session });
-    order.status = 'paid';
-    order.paymentStatus = 'paid';
-    order.paymentIntentId = paymentIntentId || order.paymentIntentId;
-    order.timeline.push({ status: 'paid', at: new Date(), note: 'Payment confirmed by Stripe webhook' });
-    await order.save({ session });
-    await Payment.findOneAndUpdate(
-      { order: order._id },
-      { $set: { status: 'paid', paymentIntentId: paymentIntentId || '', processedEventId: eventId || '' } },
-      { session }
-    );
+    const locked = await findForUpdate(Order.findById(order._id), session);
+    if (!locked || locked.status !== 'pending_payment' || locked.reservationState !== 'held') return;
+
+    await finalizeSale(locked.items, { order: locked, performedBy: locked.user, session });
+
+    locked.status = 'paid';
+    locked.paymentStatus = 'paid';
+    locked.paymentIntentId = paymentIntentId || locked.paymentIntentId;
+    locked.reservationState = 'finalized';
+    locked.timeline.push({ status: 'paid', at: new Date(), note: 'Payment confirmed by Stripe webhook' });
+    await locked.save({ session });
+
+    const paymentUpdate = { $set: { status: 'paid' } };
+    if (paymentIntentId) paymentUpdate.$set.paymentIntentId = paymentIntentId;
+    if (eventId) paymentUpdate.$set.processedEventId = eventId;
+    await findForUpdate(Payment.findOneAndUpdate({ order: locked._id }, paymentUpdate), session);
+    finalized = true;
   });
-  return true;
+  return finalized;
 };
 
 const expireStaleReservations = async () => {
-  const stale = await Order.find({
-    status: 'pending_payment',
-    reservationExpiresAt: { $lte: new Date() },
-  }).limit(100);
-  for (const order of stale) {
-    await cancelOrderInternal(order, null, 'Reservation expired before payment');
+  let expired = 0;
+  for (let batch = 0; batch < 10; batch += 1) {
+    const stale = await Order.find({
+      status: 'pending_payment',
+      reservationExpiresAt: { $lte: new Date() },
+    }).limit(100);
+    if (!stale.length) break;
+    for (const order of stale) {
+      if (await expireOrderReservationIfStale(order)) expired += 1;
+    }
   }
-  return stale.length;
+  return expired;
 };
 
 const startReservationCleanup = () => {
-  const interval = setInterval(() => {
+  const run = () => {
     expireStaleReservations().catch((error) => console.error('[reservations]', error.message));
-  }, 60 * 1000);
+  };
+  run();
+  const interval = setInterval(run, 60 * 1000);
   interval.unref();
   return interval;
 };
@@ -158,9 +223,12 @@ const startReservationCleanup = () => {
 module.exports = {
   listOrders,
   getOrder,
+  releaseOrderReservation,
+  expireOrderReservationIfStale,
   cancelOrder,
   updateStatus,
   finalizePaidOrder,
   expireStaleReservations,
   startReservationCleanup,
+  isReservationExpired,
 };

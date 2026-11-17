@@ -2,10 +2,11 @@ require('dotenv').config();
 const config = require('./src/config');
 const { createApp } = require('./src/app');
 const { connectDatabase } = require('./src/config/database');
-const { startReservationCleanup } = require('./src/services/order.service');
+const { expireStaleReservations, startReservationCleanup } = require('./src/services/order.service');
 
 const start = async () => {
   await connectDatabase();
+  await expireStaleReservations();
   const app = createApp();
   startReservationCleanup();
   app.listen(config.port, () => {

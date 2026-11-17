@@ -13,7 +13,8 @@ const movements = async (req, res) => {
   success(res, result.items, 200, { total: result.total, page: result.page, limit: result.limit });
 };
 const adjustStock = async (req, res) => {
-  const { productId, delta, reason } = req.body;
+  const { productId } = req.params;
+  const { delta, reason } = req.body;
   success(res, await inventoryService.adjustStock(productId, delta, reason, req.user._id));
 };
 

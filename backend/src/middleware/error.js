@@ -37,9 +37,18 @@ const errorHandler = (err, _req, res, _next) => {
   }
 
   if (err.type === 'StripeCardError' || err.type === 'StripeInvalidRequestError') {
+    const messages = {
+      card_declined: 'Your card was declined.',
+      insufficient_funds: 'Your card has insufficient funds.',
+      expired_card: 'Your card has expired.',
+      incorrect_cvc: 'The security code is incorrect.',
+    };
     return res.status(400).json({
       success: false,
-      error: { code: 'PAYMENT_ERROR', message: err.message },
+      error: {
+        code: 'PAYMENT_ERROR',
+        message: messages[err.code] || 'Payment could not be completed',
+      },
     });
   }
 
