@@ -30,9 +30,10 @@ export default function LoginPage() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      await dispatch(login(form)).unwrap();
+      const result = await dispatch(login(form)).unwrap();
       await dispatch(syncCart()).unwrap();
-      navigate(location.state?.from || '/account');
+      const destination = location.state?.from || (result.user?.role === 'admin' ? '/admin' : '/account');
+      navigate(destination, { replace: true });
     } catch (error) {
       setServerError(error);
     } finally {

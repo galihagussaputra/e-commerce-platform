@@ -28,6 +28,15 @@ export const register = createAsyncThunk('auth/register', async (payload, { reje
   }
 });
 
+export const logout = createAsyncThunk('auth/logout', async (_, { dispatch }) => {
+  try {
+    await authAPI.logout?.();
+  } catch {
+    localStorage.removeItem('token');
+  }
+  dispatch(sessionExpired());
+});
+
 export const loadUser = createAsyncThunk('auth/me', async (_, { rejectWithValue }) => {
   try {
     return await authAPI.me();
@@ -65,7 +74,7 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    logout(state) {
+    sessionExpired(state) {
       localStorage.removeItem('token');
       state.user = null;
       state.token = null;
@@ -108,5 +117,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, setUser } = authSlice.actions;
+export const { sessionExpired, setUser } = authSlice.actions;
 export default authSlice.reducer;

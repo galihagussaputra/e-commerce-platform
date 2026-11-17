@@ -7,12 +7,13 @@ import { Badge } from '../components/ui/Display';
 import { ErrorState } from '../components/ui/Feedback';
 
 const emptyAddress = { label: 'Home', fullName: '', phone: '', line1: '', line2: '', city: '', postalCode: '', country: 'Indonesia', isDefault: false };
+const emptyPasswords = { currentPassword: '', newPassword: '' };
 
 export default function AccountPage() {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '' });
-  const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '' });
+  const [passwords, setPasswords] = useState(emptyPasswords);
   const [address, setAddress] = useState(emptyAddress);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -25,9 +26,21 @@ export default function AccountPage() {
     try {
       await dispatch(thunk()).unwrap();
       setMessage('Saved successfully.');
+      return true;
     } catch (failure) {
-      setError(failure);
+      setError(typeof failure === 'string' ? failure : failure?.message || 'Something went wrong.');
+      return false;
     }
+  };
+
+  const submitPassword = async (event) => {
+    event.preventDefault();
+    if (await run(() => changePassword(passwords))) setPasswords(emptyPasswords);
+  };
+
+  const submitAddress = async (event) => {
+    event.preventDefault();
+    if (await run(() => addAddress(address))) setAddress(emptyAddress);
   };
 
   return (
@@ -53,7 +66,7 @@ export default function AccountPage() {
 
         <section className="surface p-5">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Change password</h2>
-          <form className="mt-4 space-y-4" onSubmit={(event) => { event.preventDefault(); run(() => changePassword(passwords)); setPasswords({ currentPassword: '', newPassword: '' }); }}>
+          <form className="mt-4 space-y-4" onSubmit={submitPassword}>
             <Input id="current-password" label="Current password" type="password" value={passwords.currentPassword} onChange={(e) => setPasswords({ ...passwords, currentPassword: e.target.value })} />
             <Input id="new-password" label="New password" type="password" value={passwords.newPassword} onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })} />
             <Button type="submit" variant="secondary">Change password</Button>
@@ -74,7 +87,7 @@ export default function AccountPage() {
             </div>
           ))}
         </div>
-        <form className="mt-5 grid gap-4 border-t border-line pt-5 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); run(() => addAddress(address)); setAddress(emptyAddress); }}>
+        <form className="mt-5 grid gap-4 border-t border-line pt-5 sm:grid-cols-2" onSubmit={submitAddress}>
           <Input id="addr-name" label="Full name" value={address.fullName} onChange={(e) => setAddress({ ...address, fullName: e.target.value })} />
           <Input id="addr-phone" label="Phone" value={address.phone} onChange={(e) => setAddress({ ...address, phone: e.target.value })} />
           <div className="sm:col-span-2"><Input id="addr-line" label="Street address" value={address.line1} onChange={(e) => setAddress({ ...address, line1: e.target.value })} /></div>

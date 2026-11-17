@@ -23,6 +23,7 @@ export default function CheckoutPage() {
   const [addressId, setAddressId] = useState(addresses.find((address) => address.isDefault)?._id || addresses[0]?._id || '');
   const [address, setAddress] = useState(emptyAddress);
   const [showForm, setShowForm] = useState(addresses.length === 0);
+  const [addressError, setAddressError] = useState('');
   const idempotencyKey = useMemo(() => crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`, []);
 
   useEffect(() => { dispatch(fetchCart()); }, [dispatch]);
@@ -32,11 +33,13 @@ export default function CheckoutPage() {
 
   const saveAddress = async (event) => {
     event.preventDefault();
+    setAddressError('');
     try {
       const result = await dispatch(addAddress(address)).unwrap();
       setAddressId(result[result.length - 1]?._id || '');
       setShowForm(false);
-    } catch {
+    } catch (failure) {
+      setAddressError(typeof failure === 'string' ? failure : failure?.message || 'Could not save address.');
       setShowForm(true);
     }
   };
@@ -73,7 +76,7 @@ export default function CheckoutPage() {
 
       {params.get('payment') === 'cancelled' && (
         <div className="mt-6 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <Info className="h-4 w-4" /> Payment was cancelled. Your stock reservation has been released.
+          <Info className="h-4 w-4" /> Payment was cancelled. No charge was made; reserved stock is released when the Stripe session expires.
         </div>
       )}
       {error && <div className="mt-6"><ErrorState message={error} /></div>}
@@ -87,6 +90,8 @@ export default function CheckoutPage() {
                 {showForm ? 'Use saved address' : 'Add new address'}
               </button>
             </div>
+
+            {addressError && <div className="mt-4"><ErrorState message={addressError} /></div>}
 
             {showForm ? (
               <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={saveAddress}>

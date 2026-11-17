@@ -68,7 +68,7 @@ export default function AdminInventory() {
             <thead><tr><th>Product</th><th>Category</th><th>Stock</th><th>Reserved</th><th>Available</th><th>Value</th></tr></thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.name}>
+                <tr key={row._id ?? row.sku ?? row.name}>
                   <td><p className="font-medium">{row.name}</p><p className="text-xs text-muted">{row.sku || '—'}</p></td>
                   <td className="text-muted">{row.category || '—'}</td>
                   <td>{row.stock}</td>

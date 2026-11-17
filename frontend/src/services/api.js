@@ -1,5 +1,11 @@
 import axios from 'axios';
 
+let sessionExpiredHandler = () => {};
+
+export const setSessionExpiredHandler = (handler) => {
+  sessionExpiredHandler = handler;
+};
+
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
@@ -17,6 +23,7 @@ client.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
       localStorage.removeItem('token');
+      sessionExpiredHandler();
     }
     const message = error.response?.data?.error?.message || error.message || 'Request failed';
     const normalized = new Error(message);
@@ -32,6 +39,7 @@ const unwrap = (response) => response.data?.data ?? response.data;
 export const authAPI = {
   register: (payload) => client.post('/auth/register', payload).then(unwrap),
   login: (payload) => client.post('/auth/login', payload).then(unwrap),
+  logout: () => client.post('/auth/logout').then(unwrap),
   me: () => client.get('/auth/me').then(unwrap),
   updateProfile: (payload) => client.put('/auth/profile', payload).then(unwrap),
   changePassword: (payload) => client.put('/auth/password', payload).then(unwrap),

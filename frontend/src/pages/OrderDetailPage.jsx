@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Info } from 'lucide-react';
 import { fetchOrder, cancelOrder } from '../features/orders/ordersSlice';
 import { Price, Badge } from '../components/ui/Display';
 import Button from '../components/ui/Button';
@@ -22,14 +22,28 @@ export default function OrderDetailPage() {
   if (error && !current) return <div className="page-shell py-10"><ErrorState message={error} /></div>;
   if (!current) return null;
 
+  const paymentReturned = params.get('payment') === 'success';
+  const paymentVerified = current.paymentStatus === 'paid' && current.status !== 'pending_payment';
+  const handleCancel = async () => {
+    const result = await dispatch(cancelOrder({ id: current._id, reason: 'Cancelled by customer' }));
+    if (cancelOrder.fulfilled.match(result)) dispatch(fetchOrder(id));
+  };
+
   return (
     <div className="page-shell py-10">
-      {params.get('payment') === 'success' && (
+      {paymentReturned && paymentVerified && (
         <div className="mb-6 flex items-center gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
           <CheckCircle2 className="h-5 w-5" />
           Payment verified. Your order is confirmed and inventory has been updated.
         </div>
       )}
+      {paymentReturned && !paymentVerified && (
+        <div className="mb-6 flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+          <Info className="h-5 w-5" />
+          Payment was submitted. We are waiting for Stripe confirmation; refresh shortly to see the final status.
+        </div>
+      )}
+      {error && <div className="mb-6"><ErrorState message={error} /></div>}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link to="/orders" className="text-xs text-muted hover:text-ink">← All orders</Link>
@@ -87,7 +101,7 @@ export default function OrderDetailPage() {
             <Button
               variant="danger"
               className="w-full"
-              onClick={async () => { await dispatch(cancelOrder({ id: current._id, reason: 'Cancelled by customer' })).unwrap(); dispatch(fetchOrder(id)); }}
+              onClick={handleCancel}
             >
               Cancel order
             </Button>
