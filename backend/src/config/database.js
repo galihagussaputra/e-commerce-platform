@@ -9,8 +9,10 @@ const connectDatabase = async (uri = config.mongodbUri) => {
 
 const disconnectDatabase = async () => mongoose.disconnect();
 
-const supportsTransactions = () =>
-  mongoose.connection?.client?.topology?.description?.type === 'ReplicaSet';
+const supportsTransactions = () => {
+  const description = mongoose.connection?.client?.topology?.description;
+  return typeof description?.type === 'string' && description.type.startsWith('ReplicaSet');
+};
 
 const withTransaction = async (work) => {
   if (!supportsTransactions()) return work(null);

@@ -20,12 +20,22 @@ const corsOrigins = (process.env.CORS_ORIGIN || clientUrl)
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+const parseTrustProxy = (value) => {
+  if (value === undefined || value === '') return false;
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  return normalized;
+};
+
 module.exports = {
   nodeEnv,
   port: Number(process.env.PORT || 5000),
   mongodbUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/ecommerce',
   jwtSecret,
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
   clientUrl,
   corsOrigins,
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
@@ -34,7 +44,7 @@ module.exports = {
   taxRate: Number(process.env.TAX_RATE || 0),
   reservationMinutes: Number(process.env.RESERVATION_MINUTES || 30),
   adminSeedEmail: process.env.ADMIN_SEED_EMAIL || 'admin@example.com',
-  adminSeedPassword: process.env.ADMIN_SEED_PASSWORD || 'admin12345',
+  adminSeedPassword: process.env.ADMIN_SEED_PASSWORD || (nodeEnv === 'production' ? '' : 'admin12345'),
   isStripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
   isWebhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
 };

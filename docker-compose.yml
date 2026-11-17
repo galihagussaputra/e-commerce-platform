@@ -2,6 +2,7 @@ services:
   mongodb:
     image: mongo:8.0
     restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     environment:
       MONGO_INITDB_DATABASE: ecommerce
     volumes:
@@ -15,14 +16,28 @@ services:
     networks:
       - ecommerce
 
+  mongo-init:
+    image: mongo:8.0
+    restart: "no"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./docker/mongo-replica-init.sh:/mongo-replica-init.sh:ro
+    entrypoint: ["sh", "/mongo-replica-init.sh"]
+    networks:
+      - ecommerce
+
   backend:
     build: ./backend
     restart: unless-stopped
     environment:
       NODE_ENV: development
       PORT: 5000
-      MONGODB_URI: mongodb://mongodb:27017/ecommerce
-      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      MONGODB_URI: mongodb://mongodb:27017/ecommerce?replicaSet=rs0&retryWrites=true&w=majority
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       CLIENT_URL: http://localhost:5173
@@ -31,7 +46,7 @@ services:
       TAX_RATE: 0
       RESERVATION_MINUTES: 30
       ADMIN_SEED_EMAIL: ${ADMIN_SEED_EMAIL:-admin@example.com}
-      ADMIN_SEED_PASSWORD: ${ADMIN_SEED_PASSWORD:-admin12345}
+      ADMIN_SEED_PASSWORD: ${ADMIN_SEED_PASSWORD:-}
     ports:
       - "5000:5000"
     volumes:
@@ -39,6 +54,8 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:5000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 15s
