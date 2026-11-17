@@ -5,6 +5,12 @@
 !.env.template
 !.env.dist
 
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+
 *.pem
 *.key
 *.pfx
