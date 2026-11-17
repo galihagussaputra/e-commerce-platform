@@ -18,6 +18,8 @@ Express API
 
 The frontend never calculates trusted order totals. It sends product IDs and quantities; the backend reloads prices, computes subtotal/shipping/tax, creates the order, reserves stock, and redirects the browser to Stripe-hosted checkout.
 
+Docker runs MongoDB as a single-node replica set `rs0`; `mongo-init` waits for the replica set to become writable before the backend starts. This makes multi-document transactions available locally. A standalone MongoDB connection remains supported but skips transactions.
+
 ## Backend layers
 
 - `routes`: endpoint definitions and middleware composition only.
@@ -36,7 +38,8 @@ All API responses use `{ success: true, data, meta? }` or `{ success: false, err
 - Passwords are hashed with bcryptjs cost 12 and excluded from queries by `select: false`.
 - JWTs are signed with `JWT_SECRET` and expire according to `JWT_EXPIRES_IN`.
 - `User.safeObject()` removes `password` and exposes `id` alongside `_id`.
-- `protect` verifies the bearer token and loads the user; `requireAdmin` enforces `role === 'admin'`.
+- `protect` verifies the bearer token, checks `tokenVersion`, and loads the user; `requireAdmin` enforces `role === 'admin'`.
+- Logout and password change increment `tokenVersion`, invalidating older tokens; the frontend clears all Redux state on `SESSION_INVALID`.
 - Admin-only route groups: product/category mutations, user listing/role changes, order status changes, analytics, and inventory adjustments.
 - The frontend stores the token in `localStorage`, removes it on 401, and restores the session via `GET /api/auth/me` on startup.
 
@@ -55,8 +58,9 @@ All API responses use `{ success: true, data, meta? }` or `{ success: false, err
 `POST /api/payments/webhook` uses the raw JSON body and verifies `stripe-signature` with `STRIPE_WEBHOOK_SECRET`.
 
 - `checkout.session.completed` / paid intents finalize the order: stock temporarily reserved becomes an actual sale, order status becomes `paid`, and the payment record becomes `paid`.
-- Payment failure paths release or restock reserved inventory and mark the payment failed.
-- Event IDs are stored in `WebhookEvent`; duplicate deliveries are acknowledged without mutating state again.
+- Payment failure paths release or restock reserved inventory once and mark the payment failed.
+- Late paid events after expiry and failure events after payment are refunded through the idempotent refund service.
+- Event IDs are stored in `WebhookEvent` with `processing`, `processed`, or `failed` status; duplicate deliveries are acknowledged without mutating state again.
 - This endpoint is registered before `express.json()` so the signature sees untouched bytes.
 
 ## Inventory model
@@ -69,7 +73,7 @@ Each product tracks:
 
 Reservation checks use a filtered `findOneAndUpdate` so concurrent checkouts cannot oversell. Stock movements are append-only records with type, quantity, reason, order/user references, and resulting balance.
 
-A server-side cleanup task runs every 60 seconds and cancels pending orders whose `reservationExpiresAt` has passed; cancellation releases or restocks inventory and restores the cart for user-initiated cancels.
+Orders carry `reservationState` (`held`, `released`, or `finalized`). A startup sweep and a 60-second cleanup task cancel pending orders whose `reservationExpiresAt` has passed; idempotency-key reuse also lazily expires the caller's stale order. Cancellation releases or restocks inventory once and restores the cart for user-initiated cancels and Stripe session creation failures.
 
 ## Analytics
 
@@ -88,4 +92,4 @@ Admin analytics are computed with MongoDB aggregations over real order/payment/p
 - Move JWT storage from `localStorage` to secure, HTTP-only cookies for stronger XSS resistance.
 - Add persistent idempotency/queueing for webhook processing under high concurrency.
 - Add CI, observability, backup/restore procedures, and secret management.
-- Replace development seed passwords and default Compose secrets before deployment.
+- Provision real `JWT_SECRET`, `ADMIN_SEED_PASSWORD`, Stripe keys, and proxy trust settings from a secret manager before deployment.

@@ -93,6 +93,75 @@
 
 **Remaining limitations**
 - Live Stripe checkout requires real test keys and webhook forwarding.
-- Authenticated admin screenshots were not captured.
+- Authenticated admin screenshots were not captured at that time; Phase 8 completed them.
 - Development-only npm audit advisories remain in Jest/Vitest toolchains.
-- JWT `localStorage`, row-key warning risk in `AdminInventory.jsx`, and webhook-failure cart restoration are documented as follow-ups.
+- JWT `localStorage` and webhook-failure cart restoration are documented as follow-ups.
+
+## Phase 7 — Production-readiness audit and defect fixes (2026-11-17)
+
+**Audit scope**
+- Deep review of transaction support, inventory lifecycle, Stripe consistency, auth/session security, RBAC/public exposure, acceptance workflows, Docker startup, browser QA, and documentation.
+- HEAD at the start of this phase: `dd4899a feat: complete full-stack e-commerce platform`. No commit or push was performed during this phase; all Phase 7 changes are uncommitted.
+
+**Backend fixes**
+- `docker-compose.yml` now starts MongoDB as single-node replica set `rs0`, adds an idempotent `mongo-init` service, waits for it before backend startup, and uses a replica-set connection URI.
+- `backend/src/config/database.js` detects `ReplicaSetWithPrimary`/`ReplicaSetNoPrimary` instead of only `ReplicaSet`.
+- `backend/tests/setup.js` uses `MongoMemoryReplSet`, so transaction tests exercise real transactions.
+- Rewrote checkout, payment webhook, and order lifecycle services for atomic reservation, event claiming, amount validation, retry markers, duplicate safety, refunds, and Stripe failure compensation.
+- Added `refund.service.js`, `escapeRegex.js`, `reservationState`, partial payment indexes, and webhook event status fields.
+- Fixed admin stock adjustment ID source, category payload whitelists, category route validation, public `status=all` draft exposure, raw Stripe error leakage, and search regex escaping.
+- Added `tokenVersion`, server-side logout, password-change invalidation, `SESSION_INVALID` middleware rejection, production seed password guard, and safer JWT/proxy defaults.
+- Fixed `TRUST_PROXY=false` string parsing after Docker healthcheck failure; boolean, numeric, and subnet/IP values are now supported.
+
+**Frontend fixes**
+- Registered the session-expired handler with the Axios client and reset all Redux slices on session expiration.
+- Added server-aware logout.
+- Gated the payment-success banner on actual paid order state and replaced the false “reservation released” cancel message.
+- Added visible address-save errors and preserved form data when checkout/account mutations fail.
+- Added visible cancel-order errors and corrected the admin inventory React key.
+
+**Tests and documentation**
+- Added transaction, lifecycle, acceptance, security, and Stripe-signature suites; backend suite is now 12 suites / 28 tests.
+- Rewrote `docs/testing-report.md`; added `docs/inventory-lifecycle.md`, `docs/security-review.md`, and `docs/acceptance-test-report.md`.
+- Updated README for replica-set startup, corrected seed credentials, current environment defaults, audit docs, and fresh screenshots.
+- Captured fresh headless Chrome screenshots for public and responsive pages; visual pixel review is still a human-only task.
+
+**Verification**
+- Backend: 12 suites / 28 tests passed.
+- Frontend: 2 files / 2 tests passed; production build succeeded.
+- Docker: config valid; all containers healthy; replica set primary ready; `supportsTransactions=true`; data survived recreation.
+- HTTP: backend health JSON and frontend `200`.
+- `git diff --check`: passed.
+
+## Phase 8 — Admin dashboard browser QA and visual documentation (2026-11-18)
+
+**Browser automation**
+- Used Windows Chrome 157 through Chrome DevTools Protocol because Playwright/Puppeteer are not installed locally.
+- Drove real login, navigation, forms, filters, confirmations, status transitions, logout, and role guards against the running Docker stack at 1440x900 and 390x844.
+- No existing customer screenshots were overwritten; admin screenshots were written to `docs/screenshots/admin/`.
+
+**Defect found and fixed**
+- `frontend/src/pages/LoginPage.jsx` always navigated to `/account`, even for an admin, when no `location.state.from` was present.
+- Login now uses the authenticated user's role, so admins land on `/admin` and customers still land on `/account`.
+
+**Coverage**
+- Overview: KPI cards, sales chart, low stock, best sellers, recent transactions, and 7/30/90/all-time range filters.
+- Products: category options, create, edit, delete, populated product table, and inline product form.
+- Inventory: stock adjustment, rollback, movement history, totals, and populated inventory table.
+- Orders: search, status filter, status transition, cancellation with confirmation, and order detail navigation.
+- Analytics: date range, quick range button, period summary, tables, inventory position, and users/roles.
+- Auth: admin guard, customer guard, sign out, unauthenticated redirect, and customer/admin post-login destinations.
+- Responsive: no page-level horizontal overflow and reachable five-link admin navigation at 390x844.
+
+**Local QA data**
+- Added six local demo orders and four paid payments to the development database so dashboard charts and order tables were realistically populated; no production data was changed.
+- Created, edited, and deleted a temporary QA product; stock adjustments were rolled back; the tested cancellation was restored to pending; the tested status transition was restored to paid.
+
+**Documentation**
+- Added `docs/admin-visual-qa.md`, README `Admin Dashboard Screenshots`, and 12 desktop/mobile screenshots under `docs/screenshots/admin/`.
+- Updated `docs/testing-report.md` with browser QA evidence and remaining limitations.
+
+**Verification**
+- All browser groups passed after rerunning the inventory and order-detail checks with corrected automation scripts.
+- No browser console errors or uncaught exceptions were recorded.
+- Final backend/frontend suites, production build, container health, and `git diff --check` results are recorded in `docs/admin-visual-qa.md`.
